@@ -4,6 +4,7 @@ import (
 	"dnsd/internal/dns"
 	"flag"
 	"log"
+	"os"
 )
 
 const (
@@ -19,6 +20,10 @@ var (
 
 func main() {
 	flag.Parse()
+	if *dbFlag == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
 
 	db, err := dns.ImportDb(*dbFlag)
 	if err != nil {

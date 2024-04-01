@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "dnsd",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd",
+            "args": [
+                "-db",
+                "/home/dgdh/Downloads/bind.example.txt",
+                "-port",
+                "8888"
+            ]
+        }
+    ]
+}
