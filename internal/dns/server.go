@@ -1,18 +1,17 @@
-package server
+package dns
 
 import (
-	"dnsd/internal/dns"
 	"fmt"
 	"log"
 	"net"
 )
 
 type Server struct {
-	db   dns.Db
+	db   Db
 	conn *net.UDPConn
 }
 
-func New(db dns.Db, host string, port int) (*Server, error) {
+func NewSerer(db Db, host string, port int) (*Server, error) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, err

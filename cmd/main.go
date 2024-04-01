@@ -2,7 +2,6 @@ package main
 
 import (
 	"dnsd/internal/dns"
-	"dnsd/internal/server"
 	"flag"
 	"log"
 )
@@ -26,7 +25,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	server, err := server.New(db, *hostFlag, *portFlag)
+	server, err := dns.NewSerer(db, *hostFlag, *portFlag)
 	if err != nil {
 		log.Fatalln(err)
 	}
