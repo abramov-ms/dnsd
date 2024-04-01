@@ -2,6 +2,7 @@ package dns
 
 import (
 	"encoding/binary"
+	"fmt"
 )
 
 type OpCode int
@@ -58,7 +59,13 @@ const (
 	addtitionalRecordsOffset = 10
 )
 
-func ParseHeader(data []byte) (*Header, int) {
+var ErrBadRequestFormat = fmt.Errorf("bad DNS request format")
+
+func ParseHeader(data []byte) (*Header, int, error) {
+	if len(data) < headerBytes {
+		return nil, 0, ErrBadRequestFormat
+	}
+
 	var h Header
 	h.ID = int(binary.BigEndian.Uint16(data[idOffset:]))
 
@@ -76,10 +83,14 @@ func ParseHeader(data []byte) (*Header, int) {
 	h.NameServerRecords = int(binary.BigEndian.Uint16(data[nameServerRecordsOffset:]))
 	h.AdditionalRecords = int(binary.BigEndian.Uint16(data[addtitionalRecordsOffset:]))
 
-	return &h, headerBytes
+	return &h, headerBytes, nil
 }
 
 func (h *Header) Put(buffer []byte) int {
+	if len(buffer) < headerBytes {
+		panic("too short buffer for DNS header")
+	}
+
 	binary.BigEndian.PutUint16(buffer, uint16(h.ID))
 
 	var flags uint16
@@ -114,25 +125,37 @@ func (h *Header) Put(buffer []byte) int {
 
 type Name []string
 
-func ParseName(data []byte) (Name, int) {
+func ParseName(data []byte) (Name, int, error) {
 	offset := 0
 	name := make([]string, 0)
 	bytes := int(data[offset])
 	for bytes != 0 {
+		if len(data) < offset+bytes+1 {
+			return nil, 0, ErrBadRequestFormat
+		}
+
 		name = append(name, string(data[offset+1:offset+bytes+1]))
 		offset += bytes + 1
 		bytes = int(data[offset])
 	}
 
-	return name, offset + 1
+	return name, offset + 1, nil
 }
 
 func (n Name) Put(buffer []byte) int {
 	offset := 0
 	for _, label := range n {
+		if len(buffer) < offset+1+len(label) {
+			panic("too short buffer for domain name")
+		}
+
 		buffer[offset] = byte(len(label))
 		copy(buffer[offset+1:], []byte(label))
 		offset += 1 + len(label)
+	}
+
+	if len(buffer) < offset {
+		panic("too short buffer for domain name")
 	}
 
 	buffer[offset] = 0
@@ -141,16 +164,7 @@ func (n Name) Put(buffer []byte) int {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type QType int
-
-const (
-	AXFR QType = iota + 252
-	MAILB
-	MAILA
-	ALL
-)
-
-type Type QType
+type Type int
 
 const (
 	A Type = iota + 1
@@ -171,19 +185,28 @@ const (
 	TXT
 )
 
-type QClass int
+type QType Type
 
 const (
-	ANY QClass = 255
+	AXFR QType = iota + 252
+	MAILB
+	MAILA
+	ALL
 )
 
-type Class QClass
+type Class int
 
 const (
 	IN Class = iota + 1
 	CS
 	CH
 	HS
+)
+
+type QClass Class
+
+const (
+	ANY QClass = 255
 )
 
 type Record struct {
@@ -194,11 +217,19 @@ type Record struct {
 	Data       []byte
 }
 
-func ParseRecord(data []byte) (*Record, int) {
+func ParseRecord(data []byte) (*Record, int, error) {
 	var r Record
 
 	var offset int
-	r.Name, offset = ParseName(data)
+	var err error
+	r.Name, offset, err = ParseName(data)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if len(data) < offset+2+2+4+2 {
+		return nil, 0, ErrBadRequestFormat
+	}
 
 	r.Type = Type(binary.BigEndian.Uint16(data[offset:]))
 	offset += 2
@@ -206,17 +237,25 @@ func ParseRecord(data []byte) (*Record, int) {
 	offset += 2
 	r.TTLSeconds = int64(binary.BigEndian.Uint32(data[offset:]))
 	offset += 4
-
-	dataLen := binary.BigEndian.Uint16(data[offset:])
+	dataLen := int(binary.BigEndian.Uint16(data[offset:]))
 	offset += 2
-	r.Data = data[offset : offset+int(dataLen)]
-	offset += int(dataLen)
 
-	return &r, offset
+	if len(data) < offset+dataLen {
+		return nil, 0, ErrBadRequestFormat
+	}
+
+	r.Data = data[offset : offset+dataLen]
+	offset += dataLen
+
+	return &r, offset, nil
 }
 
 func (r *Record) Put(buffer []byte) int {
 	offset := r.Name.Put(buffer)
+
+	if len(buffer) < offset+2+2+4+2+len(r.Data) {
+		panic("too short buffer for DNS record")
+	}
 
 	var u16_buffer [2]byte
 	binary.BigEndian.PutUint16(u16_buffer[:], uint16(r.Type))
@@ -250,22 +289,34 @@ type Question struct {
 	QClass QClass
 }
 
-func ParseQuestion(data []byte) (*Question, int) {
+func ParseQuestion(data []byte) (*Question, int, error) {
 	var q Question
 
 	var offset int
-	q.Name, offset = ParseName(data)
+	var err error
+	q.Name, offset, err = ParseName(data)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if len(data) < offset+2+2 {
+		return nil, 0, ErrBadRequestFormat
+	}
 
 	q.QType = QType(binary.BigEndian.Uint16(data[offset:]))
 	offset += 2
 	q.QClass = QClass(binary.BigEndian.Uint16(data[offset:]))
 	offset += 2
 
-	return &q, offset
+	return &q, offset, nil
 }
 
 func (q *Question) Put(buffer []byte) int {
 	offset := q.Name.Put(buffer)
+
+	if len(buffer) < offset+2+2 {
+		panic("too short buffer for DNS question")
+	}
 
 	var u16_buffer [2]byte
 	binary.BigEndian.PutUint16(u16_buffer[:], uint16(q.QType))
@@ -289,41 +340,61 @@ type Message struct {
 	Additional []Record
 }
 
-func ParseMessage(data []byte) (*Message, int) {
+func ParseMessage(data []byte) (*Message, int, error) {
 	var m Message
 
 	var offset int
-	m.Header, offset = ParseHeader(data)
+	var err error
+	m.Header, offset, err = ParseHeader(data)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	m.Question = make([]Question, m.Header.QuestionRecords)
 	for i := 0; i < m.Header.QuestionRecords; i++ {
-		question, bytes := ParseQuestion(data[offset:])
+		question, bytes, err := ParseQuestion(data[offset:])
+		if err != nil {
+			return nil, 0, err
+		}
+
 		m.Question[i] = *question
 		offset += bytes
 	}
 
 	m.Answer = make([]Record, m.Header.AnswerRecords)
 	for i := 0; i < m.Header.AnswerRecords; i++ {
-		answer, bytes := ParseRecord(data[offset:])
+		answer, bytes, err := ParseRecord(data[offset:])
+		if err != nil {
+			return nil, 0, err
+		}
+
 		m.Answer[i] = *answer
 		offset += bytes
 	}
 
 	m.Authority = make([]Record, m.Header.NameServerRecords)
 	for i := 0; i < m.Header.NameServerRecords; i++ {
-		answer, bytes := ParseRecord(data[offset:])
+		answer, bytes, err := ParseRecord(data[offset:])
+		if err != nil {
+			return nil, 0, err
+		}
+
 		m.Authority[i] = *answer
 		offset += bytes
 	}
 
 	m.Additional = make([]Record, m.Header.AdditionalRecords)
 	for i := 0; i < m.Header.AdditionalRecords; i++ {
-		answer, bytes := ParseRecord(data[offset:])
+		answer, bytes, err := ParseRecord(data[offset:])
+		if err != nil {
+			return nil, 0, err
+		}
+
 		m.Additional[i] = *answer
 		offset += bytes
 	}
 
-	return &m, offset
+	return &m, offset, nil
 }
 
 func (m *Message) Put(buffer []byte) int {

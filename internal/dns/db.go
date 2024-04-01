@@ -23,44 +23,41 @@ func ImportDb(path string) (Db, error) {
 	lines := bufio.NewScanner(file)
 	for lines.Scan() {
 		line := strings.TrimSpace(lines.Text())
-		if len(line) == 0 || strings.HasPrefix(line, ";") {
+		if semicolon := strings.Index(line, ";"); semicolon != -1 {
+			line = line[:semicolon]
+		}
+		if len(line) == 0 {
 			continue
 		}
 
 		words := bufio.NewScanner(strings.NewReader(lines.Text()))
 		words.Split(bufio.ScanWords)
-
-		domain, err := nextWord(words)
+		rname, err := consumeWord(words)
 		if err != nil {
 			return nil, fmt.Errorf("%w: expected domain name", err)
 		}
-
-		class, err := nextWord(words)
+		rclass, err := consumeWord(words)
 		if err != nil {
 			return nil, fmt.Errorf("%w: expected record class", err)
 		}
-
-		rtype, err := nextWord(words)
+		rtype, err := consumeWord(words)
 		if err != nil {
 			return nil, fmt.Errorf("%w: expected record type", err)
-
 		}
-
-		ip, err := nextWord(words)
+		rdata, err := consumeWord(words)
 		if err != nil {
-			return nil, fmt.Errorf("%w: expected IP address", err)
+			return nil, fmt.Errorf("%w: expected record data", err)
 		}
 
-		if class != "IN" || rtype != "A" {
+		if rclass != "IN" || rtype != "A" {
 			return nil, ErrNotImplemented
 		}
-
-		r, err := newINARecord(domain, ip)
+		record, err := newInAddrRecord(rname, rdata)
 		if err != nil {
 			return nil, err
 		}
 
-		db[domain] = r
+		db[rname] = record
 	}
 
 	if err := lines.Err(); err != nil {
@@ -68,10 +65,9 @@ func ImportDb(path string) (Db, error) {
 	}
 
 	return db, nil
-
 }
 
-func newINARecord(domain string, ip string) (*Record, error) {
+func newInAddrRecord(domain string, ip string) (*Record, error) {
 	var r Record
 	r.Class = IN
 	r.Type = A
@@ -89,7 +85,7 @@ func newINARecord(domain string, ip string) (*Record, error) {
 	return &r, nil
 }
 
-func nextWord(s *bufio.Scanner) (string, error) {
+func consumeWord(s *bufio.Scanner) (string, error) {
 	if !s.Scan() {
 		if err := s.Err(); err != nil {
 			return "", err
@@ -98,10 +94,5 @@ func nextWord(s *bufio.Scanner) (string, error) {
 		}
 	}
 
-	word := s.Text()
-	if strings.HasPrefix(word, ";") {
-		return "", ErrBadDbFormat
-	}
-
-	return word, nil
+	return s.Text(), nil
 }
