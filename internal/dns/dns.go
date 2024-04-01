@@ -337,11 +337,11 @@ func (q *Question) Put(buffer []byte) int {
 //////////////////////////////////////////////////////////////////////
 
 type Message struct {
-	Header     *Header
-	Question   []Question
-	Answer     []Record
-	Authority  []Record
-	Additional []Record
+	Header      *Header
+	Questions   []Question
+	Answers     []Record
+	Authorities []Record
+	Additional  []Record
 }
 
 func ParseMessage(data []byte) (*Message, int, error) {
@@ -354,36 +354,36 @@ func ParseMessage(data []byte) (*Message, int, error) {
 		return nil, 0, err
 	}
 
-	m.Question = make([]Question, m.Header.QuestionRecords)
+	m.Questions = make([]Question, m.Header.QuestionRecords)
 	for i := 0; i < m.Header.QuestionRecords; i++ {
 		question, bytes, err := ParseQuestion(data[offset:])
 		if err != nil {
 			return nil, 0, err
 		}
 
-		m.Question[i] = *question
+		m.Questions[i] = *question
 		offset += bytes
 	}
 
-	m.Answer = make([]Record, m.Header.AnswerRecords)
+	m.Answers = make([]Record, m.Header.AnswerRecords)
 	for i := 0; i < m.Header.AnswerRecords; i++ {
 		answer, bytes, err := ParseRecord(data[offset:])
 		if err != nil {
 			return nil, 0, err
 		}
 
-		m.Answer[i] = *answer
+		m.Answers[i] = *answer
 		offset += bytes
 	}
 
-	m.Authority = make([]Record, m.Header.NameServerRecords)
+	m.Authorities = make([]Record, m.Header.NameServerRecords)
 	for i := 0; i < m.Header.NameServerRecords; i++ {
 		answer, bytes, err := ParseRecord(data[offset:])
 		if err != nil {
 			return nil, 0, err
 		}
 
-		m.Authority[i] = *answer
+		m.Authorities[i] = *answer
 		offset += bytes
 	}
 
@@ -404,13 +404,13 @@ func ParseMessage(data []byte) (*Message, int, error) {
 func (m *Message) Put(buffer []byte) int {
 	offset := m.Header.Put(buffer)
 
-	for _, q := range m.Question {
+	for _, q := range m.Questions {
 		offset += q.Put(buffer[offset:])
 	}
-	for _, a := range m.Answer {
+	for _, a := range m.Answers {
 		offset += a.Put(buffer[offset:])
 	}
-	for _, a := range m.Authority {
+	for _, a := range m.Authorities {
 		offset += a.Put(buffer[offset:])
 	}
 	for _, a := range m.Additional {

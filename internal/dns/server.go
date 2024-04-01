@@ -40,9 +40,9 @@ loop:
 		var response Message
 		response.Header = &Header{}
 		response.Header.Response = true
-		response.Question = make([]Question, 0)
-		response.Authority = make([]Record, 0)
-		response.Answer = make([]Record, 0)
+		response.Questions = make([]Question, 0)
+		response.Authorities = make([]Record, 0)
+		response.Answers = make([]Record, 0)
 		response.Additional = make([]Record, 0)
 
 		request, size, err := ParseMessage(buffer[:])
@@ -56,9 +56,10 @@ loop:
 
 		response.Header.ID = request.Header.ID
 		response.Header.OpCode = request.Header.OpCode
-		response.Question = request.Question
+		response.Questions = request.Questions
+		response.Header.QuestionRecords = len(request.Questions)
 
-		for _, q := range request.Question {
+		for _, q := range request.Questions {
 			if q.QType != QType(A) || q.QClass != QClass(IN) {
 				response.Header.RCode = NotImplemented
 				response.Put(buffer[:])
@@ -69,7 +70,7 @@ loop:
 			name := strings.Join(q.Name, ".")
 			record, ok := s.db[name]
 			if ok {
-				response.Answer = append(response.Answer, *record)
+				response.Answers = append(response.Answers, *record)
 				response.Header.AnswerRecords++
 			}
 		}
