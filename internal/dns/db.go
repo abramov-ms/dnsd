@@ -21,43 +21,47 @@ func ImportDb(path string) (Db, error) {
 
 	db := make(Db)
 	lines := bufio.NewScanner(file)
+	lineno := 1
 	for lines.Scan() {
-		line := strings.TrimSpace(lines.Text())
+		line := lines.Text()
 		if semicolon := strings.Index(line, ";"); semicolon != -1 {
 			line = line[:semicolon]
 		}
+		line = strings.TrimSpace(line)
 		if len(line) == 0 {
+			lineno++
 			continue
 		}
 
-		words := bufio.NewScanner(strings.NewReader(lines.Text()))
+		words := bufio.NewScanner(strings.NewReader(line))
 		words.Split(bufio.ScanWords)
 		rname, err := consumeWord(words)
 		if err != nil {
-			return nil, fmt.Errorf("%w: expected domain name", err)
+			return nil, fmt.Errorf("%s:%d %w: expected domain name", path, lineno, err)
 		}
 		rclass, err := consumeWord(words)
 		if err != nil {
-			return nil, fmt.Errorf("%w: expected record class", err)
+			return nil, fmt.Errorf("%s:%d %w: expected record class", path, lineno, err)
 		}
 		rtype, err := consumeWord(words)
 		if err != nil {
-			return nil, fmt.Errorf("%w: expected record type", err)
+			return nil, fmt.Errorf("%s:%d %w: expected record type", path, lineno, err)
 		}
 		rdata, err := consumeWord(words)
 		if err != nil {
-			return nil, fmt.Errorf("%w: expected record data", err)
+			return nil, fmt.Errorf("%s:%d %w: expected record data", path, lineno, err)
 		}
 
 		if rclass != "IN" || rtype != "A" {
-			return nil, ErrNotImplemented
+			return nil, fmt.Errorf("%s:%d: %w", path, lineno, ErrNotImplemented)
 		}
 		record, err := newInAddrRecord(rname, rdata)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s:%d: %w", path, lineno, err)
 		}
 
 		db[rname] = record
+		lineno++
 	}
 
 	if err := lines.Err(); err != nil {
