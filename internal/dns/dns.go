@@ -25,8 +25,8 @@ const (
 
 type Header struct {
 	ID                  int
-	Query               bool
-	Opcode              OpCode
+	Response            bool
+	OpCode              OpCode
 	AuthoritativeAnswer bool
 	Truncation          bool
 	RecursionDesired    bool
@@ -35,15 +35,15 @@ type Header struct {
 	QuestionRecords     int
 	AnswerRecords       int
 	NameServerRecords   int
-	AddtitionalRecords  int
+	AdditionalRecords   int
 }
 
 const (
 	headerBytes = 12
 	idOffset    = 0
 
-	flagsOffset            = 1
-	queryBit               = 15
+	flagsOffset            = 2
+	responseBit            = 1 << 15
 	opcodeOffset           = 11
 	opcodeMask             = 1<<4 - 1
 	authoritativeAnswerBit = 1 << 10
@@ -63,8 +63,8 @@ func ParseHeader(data []byte) (*Header, int) {
 	h.ID = int(binary.BigEndian.Uint16(data[idOffset:]))
 
 	flags := binary.BigEndian.Uint16(data[flagsOffset:])
-	h.Query = flags&queryBit != 0
-	h.Opcode = OpCode((flags >> opcodeOffset) & opcodeMask)
+	h.Response = flags&responseBit != 0
+	h.OpCode = OpCode((flags >> opcodeOffset) & opcodeMask)
 	h.AuthoritativeAnswer = flags&authoritativeAnswerBit != 0
 	h.Truncation = flags&truncationBit != 0
 	h.RecursionDesired = flags&recursionDesiredBit != 0
@@ -74,7 +74,7 @@ func ParseHeader(data []byte) (*Header, int) {
 	h.QuestionRecords = int(binary.BigEndian.Uint16(data[questionRecordsOffset:]))
 	h.AnswerRecords = int(binary.BigEndian.Uint16(data[answerRecordsOffset:]))
 	h.NameServerRecords = int(binary.BigEndian.Uint16(data[nameServerRecordsOffset:]))
-	h.AddtitionalRecords = int(binary.BigEndian.Uint16(data[addtitionalRecordsOffset:]))
+	h.AdditionalRecords = int(binary.BigEndian.Uint16(data[addtitionalRecordsOffset:]))
 
 	return &h, headerBytes
 }
@@ -83,10 +83,10 @@ func (h *Header) Put(buffer []byte) int {
 	binary.BigEndian.PutUint16(buffer, uint16(h.ID))
 
 	var flags uint16
-	if h.Query {
-		flags |= queryBit
+	if h.Response {
+		flags |= responseBit
 	}
-	flags |= uint16(h.Opcode) << opcodeOffset
+	flags |= uint16(h.OpCode) << opcodeOffset
 	if h.AuthoritativeAnswer {
 		flags |= authoritativeAnswerBit
 	}
@@ -105,7 +105,7 @@ func (h *Header) Put(buffer []byte) int {
 	binary.BigEndian.PutUint16(buffer[questionRecordsOffset:], uint16(h.QuestionRecords))
 	binary.BigEndian.PutUint16(buffer[answerRecordsOffset:], uint16(h.AnswerRecords))
 	binary.BigEndian.PutUint16(buffer[nameServerRecordsOffset:], uint16(h.NameServerRecords))
-	binary.BigEndian.PutUint16(buffer[addtitionalRecordsOffset:], uint16(h.AddtitionalRecords))
+	binary.BigEndian.PutUint16(buffer[addtitionalRecordsOffset:], uint16(h.AdditionalRecords))
 
 	return headerBytes
 }
@@ -117,9 +117,11 @@ type Name []string
 func ParseName(data []byte) (Name, int) {
 	offset := 0
 	name := make([]string, 0)
-	for bytes := int(data[offset]); bytes != 0; {
+	bytes := int(data[offset])
+	for bytes != 0 {
 		name = append(name, string(data[offset+1:offset+bytes+1]))
 		offset += bytes + 1
+		bytes = int(data[offset])
 	}
 
 	return name, offset + 1
@@ -188,7 +190,7 @@ type Record struct {
 	Name       Name
 	Type       Type
 	Class      Class
-	TTLSeconds int
+	TTLSeconds int64
 	Data       []byte
 }
 
@@ -202,8 +204,8 @@ func ParseRecord(data []byte) (*Record, int) {
 	offset += 2
 	r.Class = Class(binary.BigEndian.Uint16(data[offset:]))
 	offset += 2
-	r.TTLSeconds = int(binary.BigEndian.Uint16(data[offset:]))
-	offset += 2
+	r.TTLSeconds = int64(binary.BigEndian.Uint32(data[offset:]))
+	offset += 4
 
 	dataLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
@@ -225,15 +227,16 @@ func (r *Record) Put(buffer []byte) int {
 	copy(buffer[offset:], u16_buffer[:])
 	offset += 2
 
-	binary.BigEndian.PutUint16(u16_buffer[:], uint16(r.TTLSeconds))
-	copy(buffer[offset:], u16_buffer[:])
-	offset += 2
+	var u32_buffer [4]byte
+	binary.BigEndian.PutUint32(u32_buffer[:], uint32(r.TTLSeconds))
+	copy(buffer[offset:], u32_buffer[:])
+	offset += 4
 
 	binary.BigEndian.PutUint16(u16_buffer[:], uint16(len(r.Data)))
 	copy(buffer[offset:], u16_buffer[:])
 	offset += 2
 
-	copy(buffer[offset:], []byte(r.Data))
+	copy(buffer[offset:], r.Data)
 	offset += len(r.Data)
 
 	return offset
@@ -295,28 +298,28 @@ func ParseMessage(data []byte) (*Message, int) {
 	m.Question = make([]Question, m.Header.QuestionRecords)
 	for i := 0; i < m.Header.QuestionRecords; i++ {
 		question, bytes := ParseQuestion(data[offset:])
-		m.Question = append(m.Question, *question)
+		m.Question[i] = *question
 		offset += bytes
 	}
 
 	m.Answer = make([]Record, m.Header.AnswerRecords)
 	for i := 0; i < m.Header.AnswerRecords; i++ {
 		answer, bytes := ParseRecord(data[offset:])
-		m.Answer = append(m.Answer, *answer)
+		m.Answer[i] = *answer
 		offset += bytes
 	}
 
 	m.Authority = make([]Record, m.Header.NameServerRecords)
 	for i := 0; i < m.Header.NameServerRecords; i++ {
 		answer, bytes := ParseRecord(data[offset:])
-		m.Authority = append(m.Authority, *answer)
+		m.Authority[i] = *answer
 		offset += bytes
 	}
 
-	m.Additional = make([]Record, m.Header.AddtitionalRecords)
-	for i := 0; i < m.Header.AddtitionalRecords; i++ {
+	m.Additional = make([]Record, m.Header.AdditionalRecords)
+	for i := 0; i < m.Header.AdditionalRecords; i++ {
 		answer, bytes := ParseRecord(data[offset:])
-		m.Additional = append(m.Additional, *answer)
+		m.Additional[i] = *answer
 		offset += bytes
 	}
 

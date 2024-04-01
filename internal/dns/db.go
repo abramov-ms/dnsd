@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-var ErrBadDbFormat = fmt.Errorf("Bad database format")
-var ErrNotImplemented = fmt.Errorf("Not implemented")
+var ErrBadDbFormat = fmt.Errorf("bad database format")
+var ErrNotImplemented = fmt.Errorf("not implemented")
 
 type Db map[string]*Record
 

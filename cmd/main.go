@@ -30,7 +30,7 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	server, err := dns.NewSerer(db, *hostFlag, *portFlag)
+	server, err := dns.NewServer(db, *hostFlag, *portFlag)
 	if err != nil {
 		log.Fatalln(err)
 	}
