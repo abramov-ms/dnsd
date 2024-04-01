@@ -5,7 +5,6 @@ import (
 	"flag"
 	"log"
 	"os"
-	"sync"
 )
 
 const (
@@ -19,6 +18,17 @@ var (
 	portFlag    = flag.Int("port", DefaultPort, "UDP port to listen to DNS requests on")
 	workersFlag = flag.Int("workers", 1, "Number of workers handling requests")
 )
+
+func runWorker(server *dns.Server) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Println("Woker panicked: ", err)
+			go runWorker(server)
+		}
+	}()
+
+	server.Run()
+}
 
 func main() {
 	flag.Parse()
@@ -37,14 +47,9 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	var wg sync.WaitGroup
-	for j := 0; j < *workersFlag; j++ {
-		wg.Add(1)
-		go func() {
-			server.Run()
-			wg.Done()
-		}()
+	for w := 0; w < *workersFlag; w++ {
+		go runWorker(server)
 	}
 
-	wg.Wait()
+	<-make(chan struct{})
 }
