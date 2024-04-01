@@ -1,2 +1,2 @@
 # dnsd
-Simple C++ DNS-resolver
+Simple DNS-resolver in Go
