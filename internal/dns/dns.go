@@ -126,6 +126,10 @@ func (h *Header) Put(buffer []byte) int {
 type Name []string
 
 func ParseName(data []byte) (Name, int, error) {
+	if len(data) == 0 {
+		return nil, 0, ErrBadRequestFormat
+	}
+
 	offset := 0
 	name := make([]string, 0)
 	bytes := int(data[offset])
