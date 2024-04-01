@@ -1,16 +1,18 @@
 package server
 
 import (
+	"dnsd/internal/dns"
 	"fmt"
 	"log"
 	"net"
 )
 
 type Server struct {
+	db   dns.Db
 	conn *net.UDPConn
 }
 
-func New(host string, port int) (*Server, error) {
+func New(db dns.Db, host string, port int) (*Server, error) {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, err
@@ -21,7 +23,7 @@ func New(host string, port int) (*Server, error) {
 		return nil, err
 	}
 
-	return &Server{conn}, nil
+	return &Server{db, conn}, nil
 }
 
 func (s Server) Run() {

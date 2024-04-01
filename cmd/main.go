@@ -1,6 +1,7 @@
 package main
 
 import (
+	"dnsd/internal/dns"
 	"dnsd/internal/server"
 	"flag"
 	"log"
@@ -12,6 +13,7 @@ const (
 )
 
 var (
+	dbFlag   = flag.String("db", "", "DNS database file")
 	hostFlag = flag.String("host", DefaultHost, "Host to listen to UDP requests on")
 	portFlag = flag.Int("port", DefaultPort, "UDP port to listen to DNS requests on")
 )
@@ -19,7 +21,12 @@ var (
 func main() {
 	flag.Parse()
 
-	server, err := server.New(*hostFlag, *portFlag)
+	db, err := dns.ImportDb(*dbFlag)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	server, err := server.New(db, *hostFlag, *portFlag)
 	if err != nil {
 		log.Fatalln(err)
 	}

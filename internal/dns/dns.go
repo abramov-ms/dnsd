@@ -189,7 +189,7 @@ type Record struct {
 	Type       Type
 	Class      Class
 	TTLSeconds int
-	Data       string
+	Data       []byte
 }
 
 func ParseRecord(data []byte) (*Record, int) {
@@ -207,7 +207,7 @@ func ParseRecord(data []byte) (*Record, int) {
 
 	dataLen := binary.BigEndian.Uint16(data[offset:])
 	offset += 2
-	r.Data = string(data[offset : offset+int(dataLen)])
+	r.Data = data[offset : offset+int(dataLen)]
 	offset += int(dataLen)
 
 	return &r, offset
